@@ -6,6 +6,7 @@ const {
   getFundRequests, approveFundRequest, rejectFundRequest,
   getAllBids, getBidsByNumber, giveWinningAmount,
   getMarkets, createMarket, updateMarket, declareResult,
+  distributeWins,
 } = require("../controllers/adminController");
 
 router.use(protect, adminOnly);
@@ -22,13 +23,14 @@ router.put("/fund-requests/:id/reject", rejectFundRequest);
 
 // Bids
 router.get("/bids", getAllBids);
-router.get("/markets/:name/bids", getBidsByNumber);  // ← NEW
-router.post("/bids/:id/win", giveWinningAmount);      // ← NEW
+router.get("/markets/:name/bids", getBidsByNumber);
+router.post("/bids/:id/win", giveWinningAmount);
 
 // Markets
 router.get("/markets", getMarkets);
 router.post("/markets", createMarket);
 router.put("/markets/:id", updateMarket);
 router.put("/markets/:id/result", declareResult);
+router.post("/markets/:id/distribute-wins", distributeWins); // ✅ NEW
 
 module.exports = router;

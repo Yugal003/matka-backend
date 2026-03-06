@@ -3,6 +3,17 @@ const Transaction = require("../models/Transaction");
 const Bid = require("../models/Bid");
 const Market = require("../models/Market");
 
+// ── GAME RATES ─────────────────────────────────────────────────
+const RATES = {
+  single_digit: 10,
+  jodi:         100,
+  single_patti: 150,
+  double_patti: 300,
+  triple_patti: 800,
+  single_panna: 150,
+  double_panna: 300,
+};
+
 // ── USERS ──────────────────────────────────────────────────────
 exports.getAllUsers = async (req, res) => {
   try {
@@ -110,55 +121,43 @@ exports.getAllBids = async (req, res) => {
   }
 };
 
-// GET /api/admin/markets/:name/bids?gameType=single_digit&number=5
 exports.getBidsByNumber = async (req, res) => {
   try {
     const { name } = req.params;
     const { gameType, number } = req.query;
-
     const filter = { market: name };
     if (gameType) filter.gameType = gameType;
     if (number !== undefined && number !== "") filter.number = String(number);
-
     const bids = await Bid.find(filter)
       .populate("user", "name mobile walletBalance")
       .sort({ createdAt: -1 });
-
     res.json({ success: true, bids });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
   }
 };
 
-// POST /api/admin/bids/:id/win
 exports.giveWinningAmount = async (req, res) => {
   try {
     const { winAmount } = req.body;
     if (!winAmount || winAmount <= 0)
       return res.status(400).json({ success: false, message: "Enter valid win amount" });
-
     const bid = await Bid.findById(req.params.id).populate("user");
     if (!bid) return res.status(404).json({ success: false, message: "Bid not found" });
-
     bid.status = "won";
     bid.winAmount = Number(winAmount);
     await bid.save();
-
-    await User.findByIdAndUpdate(bid.user._id, {
-      $inc: { walletBalance: Number(winAmount) }
-    });
-
+    await User.findByIdAndUpdate(bid.user._id, { $inc: { walletBalance: Number(winAmount) } });
     await Transaction.create({
       user: bid.user._id,
       type: "credit",
       amount: Number(winAmount),
       description: `Win: ${bid.gameType} | ${bid.market} | No. ${bid.number} | ₹${winAmount}`,
       status: "approved",
-      requestType: "add_funds",
+      requestType: "winning",
       processedBy: req.user.id,
       processedAt: new Date(),
     });
-
     const updatedUser = await User.findById(bid.user._id).select("walletBalance");
     res.json({
       success: true,
@@ -166,6 +165,170 @@ exports.giveWinningAmount = async (req, res) => {
       newWalletBalance: updatedUser.walletBalance,
     });
   } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+};
+
+// ── DISTRIBUTE WINS ────────────────────────────────────────────
+// POST /api/admin/markets/:id/distribute-wins
+// body: { round: "open" | "close" }
+exports.distributeWins = async (req, res) => {
+  try {
+    const market = await Market.findById(req.params.id);
+    if (!market) return res.status(404).json({ success: false, message: "Market not found" });
+
+    const { round } = req.body;
+    if (!round || !["open", "close"].includes(round)) {
+      return res.status(400).json({ success: false, message: "round must be 'open' or 'close'" });
+    }
+
+    const marketName = market.name;
+    let winnersCount = 0;
+    let totalPaid = 0;
+    const results = [];
+
+    if (round === "open") {
+      // ── Validate open result ──
+      if (!market.openResult || market.openResult === "" || market.openResult === "**") {
+        return res.status(400).json({ success: false, message: "Open result declare karo pehle!" });
+      }
+
+      const openResult = market.openResult.toString().trim();
+      // Last digit of open patti for single digit open
+      const openDigit = openResult.slice(-1);
+
+      const openBids = await Bid.find({
+        market: marketName,
+        betType: "open",
+        status: "pending",
+      }).populate("user", "name mobile");
+
+      for (const bid of openBids) {
+        let isWinner = false;
+
+        if (bid.gameType === "single_digit") {
+          // single digit open: match last digit of open result
+          isWinner = bid.number.toString() === openDigit;
+        } else {
+          // patti/panna open: exact match with open result
+          isWinner = bid.number.toString() === openResult;
+        }
+
+        if (isWinner) {
+          const rate = RATES[bid.gameType] ?? 10;
+          const winAmount = bid.amount * rate;
+
+          await User.findByIdAndUpdate(bid.user._id, {
+            $inc: { walletBalance: winAmount },
+          });
+
+          bid.status = "won";
+          bid.winAmount = winAmount;
+          await bid.save();
+
+          await Transaction.create({
+            user: bid.user._id,
+            type: "credit",
+            amount: winAmount,
+            description: `Win: ${marketName} | ${bid.gameType} | No. ${bid.number} | Open`,
+            status: "approved",
+            requestType: "winning",
+            processedBy: req.user.id,
+            processedAt: new Date(),
+          });
+
+          winnersCount++;
+          totalPaid += winAmount;
+          results.push({
+            user: bid.user.name,
+            mobile: bid.user.mobile,
+            gameType: bid.gameType,
+            number: bid.number,
+            betAmount: bid.amount,
+            winAmount,
+          });
+        }
+      }
+
+    } else {
+      // ── CLOSE ROUND ──
+      if (!market.closeResult || market.closeResult === "" || market.closeResult === "**") {
+        return res.status(400).json({ success: false, message: "Close result declare karo pehle!" });
+      }
+      if (!market.jodiResult || market.jodiResult === "" || market.jodiResult === "**") {
+        return res.status(400).json({ success: false, message: "Jodi result declare karo pehle!" });
+      }
+
+      const closeResult = market.closeResult.toString().trim();
+      const jodiResult  = market.jodiResult.toString().trim();
+      const closeDigit  = closeResult.slice(-1);
+
+      const closeBids = await Bid.find({
+        market: marketName,
+        betType: { $in: ["close", "jodi"] },
+        status: "pending",
+      }).populate("user", "name mobile");
+
+      for (const bid of closeBids) {
+        let isWinner = false;
+
+        if (bid.betType === "jodi") {
+          isWinner = bid.number.toString() === jodiResult;
+        } else if (bid.gameType === "single_digit") {
+          isWinner = bid.number.toString() === closeDigit;
+        } else {
+          isWinner = bid.number.toString() === closeResult;
+        }
+
+        if (isWinner) {
+          const rate = RATES[bid.gameType] ?? 10;
+          const winAmount = bid.amount * rate;
+
+          await User.findByIdAndUpdate(bid.user._id, {
+            $inc: { walletBalance: winAmount },
+          });
+
+          bid.status = "won";
+          bid.winAmount = winAmount;
+          await bid.save();
+
+          await Transaction.create({
+            user: bid.user._id,
+            type: "credit",
+            amount: winAmount,
+            description: `Win: ${marketName} | ${bid.gameType} | No. ${bid.number} | Close`,
+            status: "approved",
+            requestType: "winning",
+            processedBy: req.user.id,
+            processedAt: new Date(),
+          });
+
+          winnersCount++;
+          totalPaid += winAmount;
+          results.push({
+            user: bid.user.name,
+            mobile: bid.user.mobile,
+            gameType: bid.gameType,
+            number: bid.number,
+            betAmount: bid.amount,
+            winAmount,
+          });
+        }
+      }
+    }
+
+    res.json({
+      success: true,
+      message: winnersCount > 0
+        ? `${winnersCount} winners ko ₹${totalPaid} credit kiya ✅`
+        : "Koi winner nahi mila",
+      winnersCount,
+      totalPaid,
+      results,
+    });
+
+  } catch (err) {
+    console.error("distributeWins error:", err);
     res.status(500).json({ success: false, message: err.message });
   }
 };
