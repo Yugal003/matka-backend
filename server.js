@@ -21,6 +21,7 @@ app.use("/api/auth", require("./src/routes/authRoutes"));
 app.use("/api/wallet", require("./src/routes/walletRoutes"));
 app.use("/api/admin", require("./src/routes/adminRoutes"));
 app.use("/api/bids", require("./src/routes/bidRoutes"));
+app.use("/api/transactions", require("./src/routes/transactionRoutes")); // ✅ Added
 
 // Health check
 app.get("/", (req, res) => {
