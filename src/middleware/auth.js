@@ -20,7 +20,6 @@ exports.protect = async (req, res, next) => {
 };
 
 exports.adminOnly = (req, res, next) => {
-  // ✅ Fixed: use isAdmin instead of role
   if (!req.user.isAdmin) {
     return res.status(403).json({ success: false, message: "Admin access required" });
   }
