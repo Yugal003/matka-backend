@@ -21,9 +21,6 @@ app.use("/api/auth", require("./src/routes/authRoutes"));
 app.use("/api/wallet", require("./src/routes/walletRoutes"));
 app.use("/api/admin", require("./src/routes/adminRoutes"));
 
-lib/api_service.dart      
-lib/wallet_page.dart       
-lib/admin_panel_page.dart  
 // Health check
 app.get("/", (req, res) => {
   res.json({
