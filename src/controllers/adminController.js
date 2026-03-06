@@ -4,7 +4,6 @@ const Bid = require("../models/Bid");
 const Market = require("../models/Market");
 
 // ── USERS ──────────────────────────────────────────────────────
-// GET /api/admin/users
 exports.getAllUsers = async (req, res) => {
   try {
     const users = await User.find({ isAdmin: false }).select("-password").sort({ createdAt: -1 });
@@ -14,7 +13,6 @@ exports.getAllUsers = async (req, res) => {
   }
 };
 
-// PUT /api/admin/users/:id/block
 exports.blockUser = async (req, res) => {
   try {
     const user = await User.findById(req.params.id);
@@ -26,7 +24,6 @@ exports.blockUser = async (req, res) => {
   }
 };
 
-// PUT /api/admin/users/:id/wallet
 exports.updateUserWallet = async (req, res) => {
   try {
     const { amount, type, description } = req.body;
@@ -35,9 +32,7 @@ exports.updateUserWallet = async (req, res) => {
     else user.walletBalance -= Number(amount);
     await user.save();
     await Transaction.create({
-      user: user._id,
-      type,
-      amount,
+      user: user._id, type, amount,
       description: description || `Admin ${type} of ₹${amount}`,
       status: "approved",
       requestType: type === "credit" ? "add_funds" : "withdraw",
@@ -51,7 +46,6 @@ exports.updateUserWallet = async (req, res) => {
 };
 
 // ── FUND REQUESTS ──────────────────────────────────────────────
-// GET /api/admin/fund-requests
 exports.getFundRequests = async (req, res) => {
   try {
     const requests = await Transaction.find({ status: "pending" })
@@ -63,54 +57,40 @@ exports.getFundRequests = async (req, res) => {
   }
 };
 
-// PUT /api/admin/fund-requests/:id/approve
 exports.approveFundRequest = async (req, res) => {
   try {
     const transaction = await Transaction.findById(req.params.id).populate("user");
     if (!transaction) return res.status(404).json({ success: false, message: "Request not found" });
     if (transaction.status !== "pending")
       return res.status(400).json({ success: false, message: "Request already processed" });
-
     transaction.status = "approved";
     transaction.processedBy = req.user.id;
     transaction.processedAt = new Date();
     transaction.adminNote = req.body.note || "";
     await transaction.save();
-
-    // Credit walletBalance only for add_funds (withdraw already deducted)
     if (transaction.requestType === "add_funds") {
-      await User.findByIdAndUpdate(transaction.user._id, {
-        $inc: { walletBalance: transaction.amount },
-      });
+      await User.findByIdAndUpdate(transaction.user._id, { $inc: { walletBalance: transaction.amount } });
     }
-
     res.json({ success: true, message: "Request approved" });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
   }
 };
 
-// PUT /api/admin/fund-requests/:id/reject
 exports.rejectFundRequest = async (req, res) => {
   try {
     const transaction = await Transaction.findById(req.params.id).populate("user");
     if (!transaction) return res.status(404).json({ success: false, message: "Request not found" });
     if (transaction.status !== "pending")
       return res.status(400).json({ success: false, message: "Request already processed" });
-
     transaction.status = "rejected";
     transaction.processedBy = req.user.id;
     transaction.processedAt = new Date();
     transaction.adminNote = req.body.note || "";
     await transaction.save();
-
-    // Refund walletBalance for rejected withdrawals
     if (transaction.requestType === "withdraw") {
-      await User.findByIdAndUpdate(transaction.user._id, {
-        $inc: { walletBalance: transaction.amount },
-      });
+      await User.findByIdAndUpdate(transaction.user._id, { $inc: { walletBalance: transaction.amount } });
     }
-
     res.json({ success: true, message: "Request rejected" });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
@@ -118,7 +98,6 @@ exports.rejectFundRequest = async (req, res) => {
 };
 
 // ── BIDS ───────────────────────────────────────────────────────
-// GET /api/admin/bids
 exports.getAllBids = async (req, res) => {
   try {
     const bids = await Bid.find()
@@ -131,8 +110,67 @@ exports.getAllBids = async (req, res) => {
   }
 };
 
+// GET /api/admin/markets/:name/bids?gameType=single_digit&number=5
+exports.getBidsByNumber = async (req, res) => {
+  try {
+    const { name } = req.params;
+    const { gameType, number } = req.query;
+
+    const filter = { market: name };
+    if (gameType) filter.gameType = gameType;
+    if (number !== undefined && number !== "") filter.number = String(number);
+
+    const bids = await Bid.find(filter)
+      .populate("user", "name mobile walletBalance")
+      .sort({ createdAt: -1 });
+
+    res.json({ success: true, bids });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+};
+
+// POST /api/admin/bids/:id/win
+exports.giveWinningAmount = async (req, res) => {
+  try {
+    const { winAmount } = req.body;
+    if (!winAmount || winAmount <= 0)
+      return res.status(400).json({ success: false, message: "Enter valid win amount" });
+
+    const bid = await Bid.findById(req.params.id).populate("user");
+    if (!bid) return res.status(404).json({ success: false, message: "Bid not found" });
+
+    bid.status = "won";
+    bid.winAmount = Number(winAmount);
+    await bid.save();
+
+    await User.findByIdAndUpdate(bid.user._id, {
+      $inc: { walletBalance: Number(winAmount) }
+    });
+
+    await Transaction.create({
+      user: bid.user._id,
+      type: "credit",
+      amount: Number(winAmount),
+      description: `Win: ${bid.gameType} | ${bid.market} | No. ${bid.number} | ₹${winAmount}`,
+      status: "approved",
+      requestType: "add_funds",
+      processedBy: req.user.id,
+      processedAt: new Date(),
+    });
+
+    const updatedUser = await User.findById(bid.user._id).select("walletBalance");
+    res.json({
+      success: true,
+      message: `₹${winAmount} credited to ${bid.user.name}`,
+      newWalletBalance: updatedUser.walletBalance,
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+};
+
 // ── MARKETS ────────────────────────────────────────────────────
-// GET /api/admin/markets
 exports.getMarkets = async (req, res) => {
   try {
     const markets = await Market.find().sort({ createdAt: -1 });
@@ -142,7 +180,6 @@ exports.getMarkets = async (req, res) => {
   }
 };
 
-// POST /api/admin/markets
 exports.createMarket = async (req, res) => {
   try {
     const market = await Market.create(req.body);
@@ -152,7 +189,6 @@ exports.createMarket = async (req, res) => {
   }
 };
 
-// PUT /api/admin/markets/:id
 exports.updateMarket = async (req, res) => {
   try {
     const market = await Market.findByIdAndUpdate(req.params.id, req.body, { new: true });
@@ -162,7 +198,6 @@ exports.updateMarket = async (req, res) => {
   }
 };
 
-// PUT /api/admin/markets/:id/result
 exports.declareResult = async (req, res) => {
   try {
     const { openResult, closeResult, jodiResult } = req.body;

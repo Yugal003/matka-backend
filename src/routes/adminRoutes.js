@@ -4,7 +4,7 @@ const { protect, adminOnly } = require("../middleware/auth");
 const {
   getAllUsers, blockUser, updateUserWallet,
   getFundRequests, approveFundRequest, rejectFundRequest,
-  getAllBids,
+  getAllBids, getBidsByNumber, giveWinningAmount,
   getMarkets, createMarket, updateMarket, declareResult,
 } = require("../controllers/adminController");
 
@@ -22,6 +22,8 @@ router.put("/fund-requests/:id/reject", rejectFundRequest);
 
 // Bids
 router.get("/bids", getAllBids);
+router.get("/markets/:name/bids", getBidsByNumber);  // ← NEW
+router.post("/bids/:id/win", giveWinningAmount);      // ← NEW
 
 // Markets
 router.get("/markets", getMarkets);
