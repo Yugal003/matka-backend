@@ -4,8 +4,8 @@ const Transaction = require("../models/Transaction");
 // GET /api/wallet/balance
 exports.getBalance = async (req, res) => {
   try {
-    const user = await User.findById(req.user.id).select("wallet name mobile");
-    res.json({ success: true, balance: user.wallet, user });
+    const user = await User.findById(req.user.id).select("walletBalance name mobile");
+    res.json({ success: true, balance: user.walletBalance, user });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
   }
@@ -44,11 +44,11 @@ exports.requestWithdraw = async (req, res) => {
       return res.status(400).json({ success: false, message: "Minimum withdrawal amount is ₹100" });
     if (!upiId)
       return res.status(400).json({ success: false, message: "UPI ID is required for withdrawal" });
-    if (user.wallet < amount)
+    if (user.walletBalance < amount)
       return res.status(400).json({ success: false, message: "Insufficient balance" });
 
     // Deduct balance immediately and hold
-    user.wallet -= amount;
+    user.walletBalance -= amount;
     await user.save();
 
     const transaction = await Transaction.create({
