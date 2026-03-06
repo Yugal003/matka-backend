@@ -7,7 +7,7 @@ const Market = require("../models/Market");
 // GET /api/admin/users
 exports.getAllUsers = async (req, res) => {
   try {
-    const users = await User.find({ role: "user" }).select("-password").sort({ createdAt: -1 });
+    const users = await User.find({ isAdmin: false }).select("-password").sort({ createdAt: -1 });
     res.json({ success: true, users });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
@@ -18,9 +18,9 @@ exports.getAllUsers = async (req, res) => {
 exports.blockUser = async (req, res) => {
   try {
     const user = await User.findById(req.params.id);
-    user.isBlocked = !user.isBlocked;
+    user.isActive = !user.isActive;
     await user.save();
-    res.json({ success: true, message: `User ${user.isBlocked ? "blocked" : "unblocked"}`, user });
+    res.json({ success: true, message: `User ${!user.isActive ? "blocked" : "unblocked"}`, user });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
   }
@@ -31,8 +31,8 @@ exports.updateUserWallet = async (req, res) => {
   try {
     const { amount, type, description } = req.body;
     const user = await User.findById(req.params.id);
-    if (type === "credit") user.wallet += Number(amount);
-    else user.wallet -= Number(amount);
+    if (type === "credit") user.walletBalance += Number(amount);
+    else user.walletBalance -= Number(amount);
     await user.save();
     await Transaction.create({
       user: user._id,
@@ -44,7 +44,7 @@ exports.updateUserWallet = async (req, res) => {
       processedBy: req.user.id,
       processedAt: new Date(),
     });
-    res.json({ success: true, message: "Wallet updated", wallet: user.wallet });
+    res.json({ success: true, message: "Wallet updated", walletBalance: user.walletBalance });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
   }
@@ -55,7 +55,7 @@ exports.updateUserWallet = async (req, res) => {
 exports.getFundRequests = async (req, res) => {
   try {
     const requests = await Transaction.find({ status: "pending" })
-      .populate("user", "name mobile")
+      .populate("user", "name mobile walletBalance")
       .sort({ createdAt: -1 });
     res.json({ success: true, requests });
   } catch (err) {
@@ -77,9 +77,11 @@ exports.approveFundRequest = async (req, res) => {
     transaction.adminNote = req.body.note || "";
     await transaction.save();
 
-    // Credit wallet only for add_funds (withdraw already deducted)
+    // Credit walletBalance only for add_funds (withdraw already deducted)
     if (transaction.requestType === "add_funds") {
-      await User.findByIdAndUpdate(transaction.user._id, { $inc: { wallet: transaction.amount } });
+      await User.findByIdAndUpdate(transaction.user._id, {
+        $inc: { walletBalance: transaction.amount },
+      });
     }
 
     res.json({ success: true, message: "Request approved" });
@@ -102,9 +104,11 @@ exports.rejectFundRequest = async (req, res) => {
     transaction.adminNote = req.body.note || "";
     await transaction.save();
 
-    // Refund wallet for rejected withdrawals
+    // Refund walletBalance for rejected withdrawals
     if (transaction.requestType === "withdraw") {
-      await User.findByIdAndUpdate(transaction.user._id, { $inc: { wallet: transaction.amount } });
+      await User.findByIdAndUpdate(transaction.user._id, {
+        $inc: { walletBalance: transaction.amount },
+      });
     }
 
     res.json({ success: true, message: "Request rejected" });
