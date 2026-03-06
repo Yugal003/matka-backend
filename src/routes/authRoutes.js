@@ -1,40 +1,38 @@
 const express = require("express");
 const router = express.Router();
-const { body } = require("express-validator");
-const { register, login, getMe, changePassword } = require("../controllers/authController");
-const { protect } = require("../middleware/auth");
+const { protect, adminOnly } = require("../middleware/auth");
+const {
+  getAllUsers, blockUser, updateUserWallet,
+  getFundRequests, approveFundRequest, rejectFundRequest,
+  getAllBids, getBidsByNumber, giveWinningAmount,
+  getMarkets, createMarket, updateMarket, declareResult,
+  distributeWins,
+  previewWins,
+} = require("../controllers/adminController");
 
-// Validation rules
-const registerValidation = [
-  body("name")
-    .trim()
-    .notEmpty().withMessage("Name is required")
-    .isLength({ min: 2 }).withMessage("Name must be at least 2 characters"),
+router.use(protect, adminOnly);
 
-  body("mobile")
-    .trim()
-    .notEmpty().withMessage("Mobile number is required")
-    .matches(/^[0-9]{10}$/).withMessage("Enter a valid 10-digit mobile number"),
+// Users
+router.get("/users", getAllUsers);
+router.put("/users/:id/block", blockUser);
+router.put("/users/:id/wallet", updateUserWallet);
 
-  body("password")
-    .notEmpty().withMessage("Password is required")
-    .isLength({ min: 6 }).withMessage("Password must be at least 6 characters"),
-];
+// Fund Requests
+router.get("/fund-requests", getFundRequests);
+router.put("/fund-requests/:id/approve", approveFundRequest);
+router.put("/fund-requests/:id/reject", rejectFundRequest);
 
-const loginValidation = [
-  body("mobile")
-    .trim()
-    .notEmpty().withMessage("Mobile number is required")
-    .matches(/^[0-9]{10}$/).withMessage("Enter a valid 10-digit mobile number"),
+// Bids
+router.get("/bids", getAllBids);
+router.get("/markets/:name/bids", getBidsByNumber);
+router.post("/bids/:id/win", giveWinningAmount);
 
-  body("password")
-    .notEmpty().withMessage("Password is required"),
-];
-
-// Routes
-router.post("/register", registerValidation, register);
-router.post("/login", loginValidation, login);
-router.get("/me", protect, getMe);
-router.put("/change-password", protect, changePassword);
+// Markets
+router.get("/markets", getMarkets);
+router.post("/markets", createMarket);
+router.put("/markets/:id", updateMarket);
+router.put("/markets/:id/result", declareResult);
+router.get("/markets/:id/preview-wins", previewWins);         // ✅ Preview
+router.post("/markets/:id/distribute-wins", distributeWins);  // ✅ Distribute
 
 module.exports = router;

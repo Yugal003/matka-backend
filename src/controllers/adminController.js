@@ -169,6 +169,107 @@ exports.giveWinningAmount = async (req, res) => {
   }
 };
 
+// ── PREVIEW WINNERS ───────────────────────────────────────────
+// GET /api/admin/markets/:id/preview-wins?round=open
+exports.previewWins = async (req, res) => {
+  try {
+    const market = await Market.findById(req.params.id);
+    if (!market) return res.status(404).json({ success: false, message: "Market not found" });
+
+    const { round } = req.query;
+    if (!round || !["open", "close"].includes(round)) {
+      return res.status(400).json({ success: false, message: "round must be 'open' or 'close'" });
+    }
+
+    const marketName = market.name;
+    const winners = [];
+    let totalPayout = 0;
+
+    if (round === "open") {
+      if (!market.openResult || market.openResult === "" || market.openResult === "**") {
+        return res.status(400).json({ success: false, message: "Open result declare karo pehle!" });
+      }
+      const openResult = market.openResult.toString().trim();
+      const openDigit  = openResult.slice(-1);
+
+      const bids = await Bid.find({
+        market: marketName,
+        betType: "open",
+        status: "pending",
+      }).populate("user", "name mobile");
+
+      for (const bid of bids) {
+        let isWinner = false;
+        if (bid.gameType === "single_digit") {
+          isWinner = bid.number.toString() === openDigit;
+        } else {
+          isWinner = bid.number.toString() === openResult;
+        }
+        if (isWinner) {
+          const rate = RATES[bid.gameType] ?? 10;
+          const winAmount = bid.amount * rate;
+          totalPayout += winAmount;
+          winners.push({
+            userId: bid.user._id,
+            name: bid.user.name,
+            mobile: bid.user.mobile,
+            gameType: bid.gameType,
+            number: bid.number,
+            betAmount: bid.amount,
+            winAmount,
+          });
+        }
+      }
+
+    } else {
+      if (!market.closeResult || market.closeResult === "" || market.closeResult === "**") {
+        return res.status(400).json({ success: false, message: "Close result declare karo pehle!" });
+      }
+      if (!market.jodiResult || market.jodiResult === "" || market.jodiResult === "**") {
+        return res.status(400).json({ success: false, message: "Jodi result declare karo pehle!" });
+      }
+      const closeResult = market.closeResult.toString().trim();
+      const jodiResult  = market.jodiResult.toString().trim();
+      const closeDigit  = closeResult.slice(-1);
+
+      const bids = await Bid.find({
+        market: marketName,
+        betType: { $in: ["close", "jodi"] },
+        status: "pending",
+      }).populate("user", "name mobile");
+
+      for (const bid of bids) {
+        let isWinner = false;
+        if (bid.betType === "jodi") {
+          isWinner = bid.number.toString() === jodiResult;
+        } else if (bid.gameType === "single_digit") {
+          isWinner = bid.number.toString() === closeDigit;
+        } else {
+          isWinner = bid.number.toString() === closeResult;
+        }
+        if (isWinner) {
+          const rate = RATES[bid.gameType] ?? 10;
+          const winAmount = bid.amount * rate;
+          totalPayout += winAmount;
+          winners.push({
+            userId: bid.user._id,
+            name: bid.user.name,
+            mobile: bid.user.mobile,
+            gameType: bid.gameType,
+            number: bid.number,
+            betAmount: bid.amount,
+            winAmount,
+          });
+        }
+      }
+    }
+
+    res.json({ success: true, winners, totalPayout, winnersCount: winners.length });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+};
+
 // ── DISTRIBUTE WINS ────────────────────────────────────────────
 // POST /api/admin/markets/:id/distribute-wins
 // body: { round: "open" | "close" }
