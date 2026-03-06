@@ -7,6 +7,7 @@ const {
   getAllBids, getBidsByNumber, giveWinningAmount,
   getMarkets, createMarket, updateMarket, declareResult,
   distributeWins,
+  previewWins,
 } = require("../controllers/adminController");
 
 router.use(protect, adminOnly);
@@ -31,6 +32,7 @@ router.get("/markets", getMarkets);
 router.post("/markets", createMarket);
 router.put("/markets/:id", updateMarket);
 router.put("/markets/:id/result", declareResult);
-router.post("/markets/:id/distribute-wins", distributeWins); // ✅ NEW
+router.get("/markets/:id/preview-wins", previewWins);         // ✅ Preview
+router.post("/markets/:id/distribute-wins", distributeWins);  // ✅ Distribute
 
 module.exports = router;
