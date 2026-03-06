@@ -6,9 +6,9 @@ const userSchema = new mongoose.Schema(
     name: { type: String, required: [true, "Name is required"], trim: true },
     mobile: { type: String, required: [true, "Mobile is required"], unique: true, trim: true },
     password: { type: String, required: [true, "Password is required"], minlength: 6, select: false },
-    wallet: { type: Number, default: 0 },
-    role: { type: String, enum: ["user", "admin"], default: "user" },
-    isBlocked: { type: Boolean, default: false },
+    walletBalance: { type: Number, default: 0 },
+    isAdmin: { type: Boolean, default: false },
+    isActive: { type: Boolean, default: true },
   },
   { timestamps: true }
 );
