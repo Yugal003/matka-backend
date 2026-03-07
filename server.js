@@ -2,7 +2,7 @@ const express = require("express");
 const cors = require("cors");
 const dotenv = require("dotenv");
 const connectDB = require("./src/config/db");
-require("./src/utils/cronJobs");
+
 dotenv.config();
 connectDB();
 
@@ -19,6 +19,7 @@ app.use("/api/admin",        require("./src/routes/adminRoutes"));
 app.use("/api/bids",         require("./src/routes/bidRoutes"));
 app.use("/api/transactions", require("./src/routes/transactionRoutes"));
 app.use("/api/markets",      require("./src/routes/marketRoutes"));
+app.use("/api/app",          require("./src/routes/appVersionRoutes"));
 
 app.get("/", (req, res) => {
   res.json({ success: true, message: "Yugal Matka API is running ✅", version: "1.0.0" });
