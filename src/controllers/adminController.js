@@ -12,6 +12,7 @@ const RATES = {
   triple_patti: 800,
   single_panna: 150,
   double_panna: 300,
+  vadhu_var:    10,
 };
 
 // ── USERS ──────────────────────────────────────────────────────
