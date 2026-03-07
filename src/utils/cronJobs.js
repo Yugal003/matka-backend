@@ -24,8 +24,9 @@ cron.schedule("30 1 * * *", async () => {
           openResult:  "",
           closeResult: "",
           jodiResult:  "",
-          openWinsDistributed:  false,
-          closeWinsDistributed: false,
+          openWinsDistributed:     false,
+          closeWinsDistributed:    false,
+          vadhuVarWinsDistributed: false,
         },
       }
     );

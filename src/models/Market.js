@@ -10,8 +10,9 @@ const marketSchema = new mongoose.Schema(
     jodiResult: { type: String, default: "" },
     isActive: { type: Boolean, default: true },
     // ✅ Security: prevent double payment
-    openWinsDistributed:  { type: Boolean, default: false },
-    closeWinsDistributed: { type: Boolean, default: false },
+    openWinsDistributed:     { type: Boolean, default: false },
+    closeWinsDistributed:    { type: Boolean, default: false },
+    vadhuVarWinsDistributed: { type: Boolean, default: false },
   },
   { timestamps: true }
 );

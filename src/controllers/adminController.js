@@ -122,11 +122,9 @@ exports.getAllBids = async (req, res) => {
   }
 };
 
-// GET /api/admin/users/:id/bids — all bids of a specific user (today)
 exports.getUserBids = async (req, res) => {
   try {
-    const bids = await Bid.find({ user: req.params.id })
-      .sort({ createdAt: -1 });
+    const bids = await Bid.find({ user: req.params.id }).sort({ createdAt: -1 });
     res.json({ success: true, bids });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
@@ -182,15 +180,14 @@ exports.giveWinningAmount = async (req, res) => {
 };
 
 // ── PREVIEW WINNERS ───────────────────────────────────────────
-// GET /api/admin/markets/:id/preview-wins?round=open
 exports.previewWins = async (req, res) => {
   try {
     const market = await Market.findById(req.params.id);
     if (!market) return res.status(404).json({ success: false, message: "Market not found" });
 
     const { round } = req.query;
-    if (!round || !["open", "close"].includes(round)) {
-      return res.status(400).json({ success: false, message: "round must be 'open' or 'close'" });
+    if (!round || !["open", "close", "vadhu_var"].includes(round)) {
+      return res.status(400).json({ success: false, message: "round must be 'open', 'close', or 'vadhu_var'" });
     }
 
     const marketName = market.name;
@@ -233,7 +230,7 @@ exports.previewWins = async (req, res) => {
         }
       }
 
-    } else {
+    } else if (round === "close") {
       if (!market.closeResult || market.closeResult === "" || market.closeResult === "**") {
         return res.status(400).json({ success: false, message: "Close result declare karo pehle!" });
       }
@@ -274,6 +271,34 @@ exports.previewWins = async (req, res) => {
           });
         }
       }
+
+    } else if (round === "vadhu_var") {
+      if (!market.jodiResult || market.jodiResult === "" || market.jodiResult === "**") {
+        return res.status(400).json({ success: false, message: "Jodi result declare karo pehle!" });
+      }
+      const jodiResult = market.jodiResult.toString().trim();
+
+      const bids = await Bid.find({
+        market: marketName,
+        gameType: "vadhu_var",
+        status: "pending",
+      }).populate("user", "name mobile");
+
+      for (const bid of bids) {
+        if (bid.number.toString() === jodiResult) {
+          const winAmount = bid.amount * RATES.vadhu_var;
+          totalPayout += winAmount;
+          winners.push({
+            userId: bid.user._id,
+            name: bid.user.name,
+            mobile: bid.user.mobile,
+            gameType: "vadhu_var",
+            number: bid.number,
+            betAmount: bid.amount,
+            winAmount,
+          });
+        }
+      }
     }
 
     res.json({ success: true, winners, totalPayout, winnersCount: winners.length });
@@ -283,16 +308,14 @@ exports.previewWins = async (req, res) => {
 };
 
 // ── DISTRIBUTE WINS ────────────────────────────────────────────
-// POST /api/admin/markets/:id/distribute-wins
-// body: { round: "open" | "close" }
 exports.distributeWins = async (req, res) => {
   try {
     const market = await Market.findById(req.params.id);
     if (!market) return res.status(404).json({ success: false, message: "Market not found" });
 
     const { round } = req.body;
-    if (!round || !["open", "close"].includes(round)) {
-      return res.status(400).json({ success: false, message: "round must be 'open' or 'close'" });
+    if (!round || !["open", "close", "vadhu_var"].includes(round)) {
+      return res.status(400).json({ success: false, message: "round must be 'open', 'close', or 'vadhu_var'" });
     }
 
     const marketName = market.name;
@@ -301,18 +324,15 @@ exports.distributeWins = async (req, res) => {
     const results = [];
 
     if (round === "open") {
-      // ── Already distributed check ──
       if (market.openWinsDistributed === true) {
-        return res.status(400).json({ success: false, message: "⚠️ Open wins already distributed! Double payment nahi hoga." });
+        return res.status(400).json({ success: false, message: "⚠️ Open wins already distributed!" });
       }
-      // ── Validate open result ──
       if (!market.openResult || market.openResult === "" || market.openResult === "**") {
         return res.status(400).json({ success: false, message: "Open result declare karo pehle!" });
       }
 
       const openResult = market.openResult.toString().trim();
-      // Last digit of open patti for single digit open
-      const openDigit = openResult.slice(-1);
+      const openDigit  = openResult.slice(-1);
 
       const openBids = await Bid.find({
         market: marketName,
@@ -322,58 +342,34 @@ exports.distributeWins = async (req, res) => {
 
       for (const bid of openBids) {
         let isWinner = false;
-
         if (bid.gameType === "single_digit") {
-          // single digit open: match last digit of open result
           isWinner = bid.number.toString() === openDigit;
         } else {
-          // patti/panna open: exact match with open result
           isWinner = bid.number.toString() === openResult;
         }
-
         if (isWinner) {
           const rate = RATES[bid.gameType] ?? 10;
           const winAmount = bid.amount * rate;
-
-          await User.findByIdAndUpdate(bid.user._id, {
-            $inc: { walletBalance: winAmount },
-          });
-
+          await User.findByIdAndUpdate(bid.user._id, { $inc: { walletBalance: winAmount } });
           bid.status = "won";
           bid.winAmount = winAmount;
           await bid.save();
-
           await Transaction.create({
-            user: bid.user._id,
-            type: "credit",
-            amount: winAmount,
+            user: bid.user._id, type: "credit", amount: winAmount,
             description: `Win: ${marketName} | ${bid.gameType} | No. ${bid.number} | Open`,
-            status: "approved",
-            requestType: "winning",
-            processedBy: req.user.id,
-            processedAt: new Date(),
+            status: "approved", requestType: "winning",
+            processedBy: req.user.id, processedAt: new Date(),
           });
-
           winnersCount++;
           totalPaid += winAmount;
-          results.push({
-            user: bid.user.name,
-            mobile: bid.user.mobile,
-            gameType: bid.gameType,
-            number: bid.number,
-            betAmount: bid.amount,
-            winAmount,
-          });
+          results.push({ user: bid.user.name, mobile: bid.user.mobile, gameType: bid.gameType, number: bid.number, betAmount: bid.amount, winAmount });
         }
       }
-
-      // ✅ Mark open wins as distributed
       await Market.findByIdAndUpdate(market._id, { openWinsDistributed: true });
 
-    } else {
-      // ── CLOSE ROUND ──
+    } else if (round === "close") {
       if (market.closeWinsDistributed === true) {
-        return res.status(400).json({ success: false, message: "⚠️ Close wins already distributed! Double payment nahi hoga." });
+        return res.status(400).json({ success: false, message: "⚠️ Close wins already distributed!" });
       }
       if (!market.closeResult || market.closeResult === "" || market.closeResult === "**") {
         return res.status(400).json({ success: false, message: "Close result declare karo pehle!" });
@@ -394,7 +390,6 @@ exports.distributeWins = async (req, res) => {
 
       for (const bid of closeBids) {
         let isWinner = false;
-
         if (bid.betType === "jodi") {
           isWinner = bid.number.toString() === jodiResult;
         } else if (bid.gameType === "single_digit") {
@@ -402,55 +397,67 @@ exports.distributeWins = async (req, res) => {
         } else {
           isWinner = bid.number.toString() === closeResult;
         }
-
         if (isWinner) {
           const rate = RATES[bid.gameType] ?? 10;
           const winAmount = bid.amount * rate;
-
-          await User.findByIdAndUpdate(bid.user._id, {
-            $inc: { walletBalance: winAmount },
-          });
-
+          await User.findByIdAndUpdate(bid.user._id, { $inc: { walletBalance: winAmount } });
           bid.status = "won";
           bid.winAmount = winAmount;
           await bid.save();
-
           await Transaction.create({
-            user: bid.user._id,
-            type: "credit",
-            amount: winAmount,
+            user: bid.user._id, type: "credit", amount: winAmount,
             description: `Win: ${marketName} | ${bid.gameType} | No. ${bid.number} | Close`,
-            status: "approved",
-            requestType: "winning",
-            processedBy: req.user.id,
-            processedAt: new Date(),
+            status: "approved", requestType: "winning",
+            processedBy: req.user.id, processedAt: new Date(),
           });
-
           winnersCount++;
           totalPaid += winAmount;
-          results.push({
-            user: bid.user.name,
-            mobile: bid.user.mobile,
-            gameType: bid.gameType,
-            number: bid.number,
-            betAmount: bid.amount,
-            winAmount,
-          });
+          results.push({ user: bid.user.name, mobile: bid.user.mobile, gameType: bid.gameType, number: bid.number, betAmount: bid.amount, winAmount });
         }
       }
-
-      // ✅ Mark close wins as distributed
       await Market.findByIdAndUpdate(market._id, { closeWinsDistributed: true });
+
+    } else if (round === "vadhu_var") {
+      if (market.vadhuVarWinsDistributed === true) {
+        return res.status(400).json({ success: false, message: "⚠️ Vadhu Var wins already distributed!" });
+      }
+      if (!market.jodiResult || market.jodiResult === "" || market.jodiResult === "**") {
+        return res.status(400).json({ success: false, message: "Jodi result declare karo pehle!" });
+      }
+
+      const jodiResult = market.jodiResult.toString().trim();
+
+      const vadhuVarBids = await Bid.find({
+        market: marketName,
+        gameType: "vadhu_var",
+        status: "pending",
+      }).populate("user", "name mobile");
+
+      for (const bid of vadhuVarBids) {
+        if (bid.number.toString() === jodiResult) {
+          const winAmount = bid.amount * RATES.vadhu_var;
+          await User.findByIdAndUpdate(bid.user._id, { $inc: { walletBalance: winAmount } });
+          bid.status = "won";
+          bid.winAmount = winAmount;
+          await bid.save();
+          await Transaction.create({
+            user: bid.user._id, type: "credit", amount: winAmount,
+            description: `Win: ${marketName} | Vadhu Var | No. ${bid.number}`,
+            status: "approved", requestType: "winning",
+            processedBy: req.user.id, processedAt: new Date(),
+          });
+          winnersCount++;
+          totalPaid += winAmount;
+          results.push({ user: bid.user.name, mobile: bid.user.mobile, gameType: "vadhu_var", number: bid.number, betAmount: bid.amount, winAmount });
+        }
+      }
+      await Market.findByIdAndUpdate(market._id, { vadhuVarWinsDistributed: true });
     }
 
     res.json({
       success: true,
-      message: winnersCount > 0
-        ? `${winnersCount} winners ko ₹${totalPaid} credit kiya ✅`
-        : "Koi winner nahi mila",
-      winnersCount,
-      totalPaid,
-      results,
+      message: winnersCount > 0 ? `${winnersCount} winners ko ₹${totalPaid} credit kiya ✅` : "Koi winner nahi mila",
+      winnersCount, totalPaid, results,
     });
 
   } catch (err) {
