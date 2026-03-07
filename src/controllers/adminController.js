@@ -234,24 +234,18 @@ exports.previewWins = async (req, res) => {
       if (!market.closeResult || market.closeResult === "" || market.closeResult === "**") {
         return res.status(400).json({ success: false, message: "Close result declare karo pehle!" });
       }
-      if (!market.jodiResult || market.jodiResult === "" || market.jodiResult === "**") {
-        return res.status(400).json({ success: false, message: "Jodi result declare karo pehle!" });
-      }
       const closeResult = market.closeResult.toString().trim();
-      const jodiResult  = market.jodiResult.toString().trim();
       const closeDigit  = closeResult.slice(-1);
 
       const bids = await Bid.find({
         market: marketName,
-        betType: { $in: ["close", "jodi"] },
+        betType: "close",
         status: "pending",
       }).populate("user", "name mobile");
 
       for (const bid of bids) {
         let isWinner = false;
-        if (bid.betType === "jodi") {
-          isWinner = bid.number.toString() === jodiResult;
-        } else if (bid.gameType === "single_digit") {
+        if (bid.gameType === "single_digit") {
           isWinner = bid.number.toString() === closeDigit;
         } else {
           isWinner = bid.number.toString() === closeResult;
@@ -278,21 +272,26 @@ exports.previewWins = async (req, res) => {
       }
       const jodiResult = market.jodiResult.toString().trim();
 
+      // Fetch both vadhu_var and jodi bids
       const bids = await Bid.find({
         market: marketName,
-        gameType: "vadhu_var",
         status: "pending",
+        $or: [
+          { gameType: "vadhu_var" },
+          { betType: "jodi" },
+        ],
       }).populate("user", "name mobile");
 
       for (const bid of bids) {
         if (bid.number.toString() === jodiResult) {
-          const winAmount = bid.amount * RATES.vadhu_var;
+          const rate = bid.betType === "jodi" ? RATES.jodi : RATES.vadhu_var;
+          const winAmount = bid.amount * rate;
           totalPayout += winAmount;
           winners.push({
             userId: bid.user._id,
             name: bid.user.name,
             mobile: bid.user.mobile,
-            gameType: "vadhu_var",
+            gameType: bid.betType === "jodi" ? "jodi" : "vadhu_var",
             number: bid.number,
             betAmount: bid.amount,
             winAmount,
@@ -384,15 +383,13 @@ exports.distributeWins = async (req, res) => {
 
       const closeBids = await Bid.find({
         market: marketName,
-        betType: { $in: ["close", "jodi"] },
+        betType: "close",
         status: "pending",
       }).populate("user", "name mobile");
 
       for (const bid of closeBids) {
         let isWinner = false;
-        if (bid.betType === "jodi") {
-          isWinner = bid.number.toString() === jodiResult;
-        } else if (bid.gameType === "single_digit") {
+        if (bid.gameType === "single_digit") {
           isWinner = bid.number.toString() === closeDigit;
         } else {
           isWinner = bid.number.toString() === closeResult;
@@ -427,28 +424,33 @@ exports.distributeWins = async (req, res) => {
 
       const jodiResult = market.jodiResult.toString().trim();
 
+      // Fetch both vadhu_var and jodi bids
       const vadhuVarBids = await Bid.find({
         market: marketName,
-        gameType: "vadhu_var",
         status: "pending",
+        $or: [
+          { gameType: "vadhu_var" },
+          { betType: "jodi" },
+        ],
       }).populate("user", "name mobile");
 
       for (const bid of vadhuVarBids) {
         if (bid.number.toString() === jodiResult) {
-          const winAmount = bid.amount * RATES.vadhu_var;
+          const rate = bid.betType === "jodi" ? RATES.jodi : RATES.vadhu_var;
+          const winAmount = bid.amount * rate;
           await User.findByIdAndUpdate(bid.user._id, { $inc: { walletBalance: winAmount } });
           bid.status = "won";
           bid.winAmount = winAmount;
           await bid.save();
           await Transaction.create({
             user: bid.user._id, type: "credit", amount: winAmount,
-            description: `Win: ${marketName} | Vadhu Var | No. ${bid.number}`,
+            description: `Win: ${marketName} | ${bid.betType === "jodi" ? "Jodi" : "Vadhu Var"} | No. ${bid.number}`,
             status: "approved", requestType: "winning",
             processedBy: req.user.id, processedAt: new Date(),
           });
           winnersCount++;
           totalPaid += winAmount;
-          results.push({ user: bid.user.name, mobile: bid.user.mobile, gameType: "vadhu_var", number: bid.number, betAmount: bid.amount, winAmount });
+          results.push({ user: bid.user.name, mobile: bid.user.mobile, gameType: bid.betType === "jodi" ? "jodi" : "vadhu_var", number: bid.number, betAmount: bid.amount, winAmount });
         }
       }
       await Market.findByIdAndUpdate(market._id, { vadhuVarWinsDistributed: true });
