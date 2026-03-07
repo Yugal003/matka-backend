@@ -243,24 +243,19 @@ exports.previewWins = async (req, res) => {
 
       const bids = await Bid.find({
         market: marketName,
+        betType: "close",
         status: "pending",
-        $or: [
-          { betType: "close" },
-          { gameType: "jodi" },
-        ],
       }).populate("user", "name mobile");
 
       for (const bid of bids) {
         let isWinner = false;
-        if (bid.gameType === "jodi") {
-          isWinner = bid.number.toString() === jodiResult;
-        } else if (bid.gameType === "single_digit") {
+        if (bid.gameType === "single_digit") {
           isWinner = bid.number.toString() === closeDigit;
         } else {
           isWinner = bid.number.toString() === closeResult;
         }
         if (isWinner) {
-          const rate = bid.gameType === "jodi" ? RATES.jodi : (RATES[bid.gameType] ?? 10);
+          const rate = RATES[bid.gameType] ?? 10;
           const winAmount = bid.amount * rate;
           totalPayout += winAmount;
           winners.push({
@@ -392,24 +387,19 @@ exports.distributeWins = async (req, res) => {
 
       const closeBids = await Bid.find({
         market: marketName,
+        betType: "close",
         status: "pending",
-        $or: [
-          { betType: "close" },
-          { gameType: "jodi" },
-        ],
       }).populate("user", "name mobile");
 
       for (const bid of closeBids) {
         let isWinner = false;
-        if (bid.gameType === "jodi") {
-          isWinner = bid.number.toString() === jodiResult;
-        } else if (bid.gameType === "single_digit") {
+        if (bid.gameType === "single_digit") {
           isWinner = bid.number.toString() === closeDigit;
         } else {
           isWinner = bid.number.toString() === closeResult;
         }
         if (isWinner) {
-          const rate = bid.gameType === "jodi" ? RATES.jodi : (RATES[bid.gameType] ?? 10);
+          const rate = RATES[bid.gameType] ?? 10;
           const winAmount = bid.amount * rate;
           await User.findByIdAndUpdate(bid.user._id, { $inc: { walletBalance: winAmount } });
           bid.status = "won";
