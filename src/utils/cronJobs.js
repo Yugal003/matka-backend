@@ -1,17 +1,22 @@
 const cron = require("node-cron");
 const Bid = require("../models/Bid");
 const Market = require("../models/Market");
+const Transaction = require("../models/Transaction");
 
-// ── IST 7:59 AM = UTC 2:29 AM — TEMP TEST ──
-cron.schedule("29 2 * * *", async () => {
+// ── IST 7:00 AM = UTC 1:30 AM ──
+cron.schedule("30 1 * * *", async () => {
   try {
     console.log("⏰ Cron job started: daily cleanup");
 
-    const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    // 1. Delete ALL bids
+    const deletedBids = await Bid.deleteMany({});
+    console.log(`🗑️ Deleted ${deletedBids.deletedCount} bids`);
 
-    const deletedBids = await Bid.deleteMany({ createdAt: { $lt: cutoff } });
-    console.log(`🗑️ Deleted ${deletedBids.deletedCount} old bids`);
+    // 2. Delete winning transactions only
+    const deletedTxns = await Transaction.deleteMany({ requestType: "winning" });
+    console.log(`🗑️ Deleted ${deletedTxns.deletedCount} winning transactions`);
 
+    // 3. Reset ALL market results + distribution flags
     const resetMarkets = await Market.updateMany(
       {},
       {
@@ -32,4 +37,4 @@ cron.schedule("29 2 * * *", async () => {
   }
 });
 
-console.log("⏰ Cron job scheduled: IST 7:59 AM (UTC 2:29 AM) test");
+console.log("⏰ Cron job scheduled: IST 7:00 AM daily cleanup");
