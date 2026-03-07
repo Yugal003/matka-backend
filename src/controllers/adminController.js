@@ -289,6 +289,10 @@ exports.distributeWins = async (req, res) => {
     const results = [];
 
     if (round === "open") {
+      // ── Already distributed check ──
+      if (market.openWinsDistributed === true) {
+        return res.status(400).json({ success: false, message: "⚠️ Open wins already distributed! Double payment nahi hoga." });
+      }
       // ── Validate open result ──
       if (!market.openResult || market.openResult === "" || market.openResult === "**") {
         return res.status(400).json({ success: false, message: "Open result declare karo pehle!" });
@@ -351,8 +355,14 @@ exports.distributeWins = async (req, res) => {
         }
       }
 
+      // ✅ Mark open wins as distributed
+      await Market.findByIdAndUpdate(market._id, { openWinsDistributed: true });
+
     } else {
       // ── CLOSE ROUND ──
+      if (market.closeWinsDistributed === true) {
+        return res.status(400).json({ success: false, message: "⚠️ Close wins already distributed! Double payment nahi hoga." });
+      }
       if (!market.closeResult || market.closeResult === "" || market.closeResult === "**") {
         return res.status(400).json({ success: false, message: "Close result declare karo pehle!" });
       }
@@ -416,6 +426,9 @@ exports.distributeWins = async (req, res) => {
           });
         }
       }
+
+      // ✅ Mark close wins as distributed
+      await Market.findByIdAndUpdate(market._id, { closeWinsDistributed: true });
     }
 
     res.json({
