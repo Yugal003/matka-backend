@@ -7,7 +7,7 @@ const router = express.Router();
 // Change version and apkUrl whenever you release a new APK
 const APP_CONFIG = {
   latestVersion: "1.0.1",          // ← Update this when new APK release karo
-  minVersion: "1.0.1",             // ← Users below this version will be force updated
+  minVersion: "1.0.0",             // ← Users below this version will be force updated
   apkUrl: "https://drive.google.com/drive/folders/1AAvQ5UxBq6qKTZJMau5AXvEK8R2PAyO8?usp=sharing", // ← Google Drive APK link yahan daalo
   updateMessage: "Naya update available hai! Behtar experience ke liye abhi update karo.",
 };
