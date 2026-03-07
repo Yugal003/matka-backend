@@ -121,6 +121,17 @@ exports.getAllBids = async (req, res) => {
   }
 };
 
+// GET /api/admin/users/:id/bids — all bids of a specific user (today)
+exports.getUserBids = async (req, res) => {
+  try {
+    const bids = await Bid.find({ user: req.params.id })
+      .sort({ createdAt: -1 });
+    res.json({ success: true, bids });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+};
+
 exports.getBidsByNumber = async (req, res) => {
   try {
     const { name } = req.params;
