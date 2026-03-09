@@ -34,6 +34,8 @@ app.use((err, req, res, next) => {
   res.status(500).json({ success: false, message: "Something went wrong on the server." });
 });
 
+require("./src/utils/cronJobs");
+
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, "0.0.0.0", () => {
   console.log(`🚀 Server running on port ${PORT}`);
