@@ -6,8 +6,8 @@ const router = express.Router();
 // ── Current app version config ──
 // Change version and apkUrl whenever you release a new APK
 const APP_CONFIG = {
-  latestVersion: "1.0.3",          // ← Update this when new APK release karo
-  minVersion: "1.0.3",             // ← Users below this version will be force updated
+  latestVersion: "1.0.4",          // ← Update this when new APK release karo
+  minVersion: "1.0.4",             // ← Users below this version will be force updated
   apkUrl: "https://drive.google.com/uc?export=download&id=1y-ZNpf66O0sjxsIZyeuGWPvq7VRJAWaH",
   updateMessage: "Naya update available hai! Behtar experience ke liye abhi update karo.",
 };
